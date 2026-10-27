@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>중력 변형 테트리스 (Gravity Tetris)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #ffffff;
+            touch-action: manipulation;
+        }
+        canvas {
+            display: block;
+            border: 2px solid #334155;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 select-none bg-slate-950">
+
+    <div class="flex flex-col md:flex-row items-center justify-center gap-6 bg-slate-900 p-6 rounded-2xl shadow-2xl border border-slate-800 max-w-4xl w-full">
+        <!-- 메인 게임 캔버스 영역 -->
+        <div class="relative">
+            <canvas id="tetrisCanvas" width="500" height="500"></canvas>
+            
+            <!-- 오버레이 화면 (이름 입력 / 시작 / 일시정지 / 게임오버) -->
+            <div id="overlay" class="absolute inset-0 bg-black/85 rounded-lg flex flex-col items-center justify-center p-6 text-center z-10 backdrop-blur-sm">
+                
+                <!-- 1. 이름 입력 화면 -->
+                <div id="screenNameInput" class="space-y-4 w-full max-w-xs">
+                    <h1 class="text-3xl font-extrabold text-cyan-400 tracking-wider">GRAVITY TETRIS</h1>
+                    <p class="text-yellow-400 text-xs font-medium">플레이어 이름을 입력하세요</p>
+                    <input type="text" id="playerNameInput" maxlength="10" placeholder="이름 입력 (최대 10자)" 
+                           class="px-4 py-2 text-center text-slate-900 font-bold rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400 w-full" />
+                    <button id="btnSubmitName" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded-lg transition duration-200 shadow-lg text-sm">
+                        확인 (Enter)
+                    </button>
+                </div>
+
+                <!-- 2. 게임 시작 준비 화면 -->
+                <div id="screenStart" class="hidden space-y-4">
+                    <h1 class="text-4xl font-extrabold text-white">READY</h1>
+                    <p id="welcomeMsg" class="text-cyan-300 font-semibold text-sm"></p>
+                    <p class="text-slate-300 text-xs">Enter 키 또는 시작 버튼을 눌러주세요</p>
+                    <button id="btnStartGame" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-6 rounded-lg transition duration-200 shadow-lg">
+                        게임 시작
+                    </button>
+                </div>
+
+                <!-- 3. 일시정지 화면 -->
+                <div id="screenPause" class="hidden space-y-2">
+                    <h1 class="text-4xl font-extrabold text-yellow-400">PAUSED</h1>
+                    <p class="text-slate-300 text-xs">P 키를 눌러 게임 재개</p>
+                </div>
+
+                <!-- 4. 재시작 확인 화면 -->
+                <div id="screenRestart" class="hidden space-y-2">
+                    <h1 class="text-3xl font-extrabold text-orange-400">RESTART</h1>
+                    <p class="text-slate-300 text-xs">R 키를 눌러 다시 시작</p>
+                </div>
+
+                <!-- 5. 게임 오버 화면 -->
+                <div id="screenGameOver" class="hidden space-y-3 w-full max-w-xs">
+                    <h1 class="text-3xl font-extrabold text-red-500">GAME OVER</h1>
+                    <div class="bg-slate-800/90 p-3 rounded-lg border border-slate-700">
+                        <h2 class="text-yellow-400 text-xs font-bold mb-2">TOP 5 RANKING</h2>
+                        <ol id="rankingList" class="text-xs space-y-1 text-left px-2"></ol>
+                    </div>
+                    <p class="text-slate-400 text-xs">R 키를 눌러 재시작</p>
+                    <button id="btnRestartGame" class="bg-red-600 hover:bg-red-500 text-white text-xs font-bold py-2.5 px-4 rounded-lg transition duration-200 w-full shadow-lg">
+                        다시 시작 (R)
+                    </button>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- 우측 상태 및 정보 패널 -->
+        <div class="flex flex-col justify-between w-full md:w-56 h-[500px] bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
+            <div class="space-y-3">
+                <!-- 정보 표시 영역 -->
+                <div class="grid grid-cols-2 md:grid-cols-1 gap-2">
+                    <div class="bg-slate-900/80 p-2 rounded-lg border border-slate-700">
+                        <span class="text-[10px] text-slate-400 block">플레이어</span>
+                        <span id="uiPlayerName" class="text-xs font-bold text-cyan-400 truncate block">-</span>
+                    </div>
+                    <div class="bg-slate-900/80 p-2 rounded-lg border border-slate-700">
+                        <span class="text-[10px] text-slate-400 block">점수</span>
+                        <span id="uiScore" class="text-base font-extrabold text-yellow-400 block">0</span>
+                    </div>
+                </div>
+
+                <!-- 실시간 중력 방향 정보 -->
+                <div class="bg-slate-900/80 p-2.5 rounded-lg border border-rose-500/30 text-center">
+                    <span class="text-[10px] text-amber-300 font-bold block">현재 중력 방향</span>
+                    <span id="uiGravityDir" class="text-lg font-black text-rose-400 block my-0.5">DOWN (↓)</span>
+                    <span id="uiGravityTimer" class="text-[10px] text-slate-400 block">다음 전환: 45초</span>
+                </div>
+
+                <!-- 다음 블록 미리보기 -->
+                <div class="bg-slate-900/80 p-2 rounded-lg border border-slate-700 flex flex-col items-center">
+                    <span class="text-[10px] text-slate-300 font-semibold self-start mb-1">다음 블록:</span>
+                    <canvas id="nextPieceCanvas" width="80" height="80" class="border-0 shadow-none bg-transparent"></canvas>
+                </div>
+            </div>
+
+            <!-- 조작법 안내 (글자 크기 축소 반영) -->
+            <div class="bg-slate-900/80 p-2.5 rounded-lg border border-slate-700 text-[10px] text-slate-300 space-y-0.5">
+                <div class="font-bold text-cyan-300 border-b border-slate-700 pb-1 mb-1">조작 안내</div>
+                <div><span class="text-yellow-400 font-semibold">Enter</span> : 시작</div>
+                <div><span class="text-yellow-400 font-semibold">P</span> : 일시정지</div>
+                <div><span class="text-yellow-400 font-semibold">R</span> : 재시작</div>
+                <div><span class="text-yellow-400 font-semibold">G</span> : 중력 변형</div>
+                <div class="border-t border-slate-800 my-0.5 pt-0.5 text-slate-400">--- 블록 조작 ---</div>
+                <div><span class="text-cyan-400">← →</span> : 이동</div>
+                <div><span class="text-cyan-400">↑</span> : 회전</div>
+                <div><span class="text-cyan-400">↓</span> : 소프트 드롭</div>
+                <div><span class="text-cyan-400">Space</span> : 하드 드롭</div>
+            </div>
+
+            <!-- BGM 온오프 버튼 -->
+            <div class="mt-1 flex items-center justify-between text-[10px] text-slate-400 bg-slate-900/80 px-2.5 py-1.5 rounded-lg border border-slate-700">
+                <span>배경음악 (BGM)</span>
+                <button id="btnToggleSound" class="text-cyan-400 font-bold focus:outline-none hover:text-cyan-300">ON</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. 상수 및 좌표계 설정 (20x20 정방형 보드)
+        // ==========================================
+        const GRID_SIZE = 20;
+        const BLOCK_SIZE = 25; // 20 * 25 = 500px
+
+        const COLOR_GRID_INSIDE = '#282c34';
+        const COLOR_GRID_LINE = '#111827';
+        const COLOR_GHOST = '#64748b';
+
+        const TETROMINO_COLORS = [
+            '#00ffff', // I
+            '#ffff00', // O
+            '#a855f7', // T
+            '#22c55e', // S
+            '#ef4444', // Z
+            '#3b82f6', // J
+            '#f97316'  // L
+        ];
+
+        const TETROMINO_SHAPES = [
+            [[1, 5, 9, 13], [4, 5, 6, 7], [1, 5, 9, 13], [4, 5, 6, 7]], 
+            [[1, 2, 5, 6]], 
+            [[1, 4, 5, 6], [1, 5, 6, 9], [4, 5, 6, 9], [1, 4, 5, 9]], 
+            [[1, 2, 4, 5], [1, 5, 6, 10], [1, 2, 4, 5], [1, 5, 6, 10]], 
+            [[0, 1, 5, 6], [2, 5, 6, 9], [0, 1, 5, 6], [2, 5, 6, 9]], 
+            [[1, 5, 9, 8], [4, 5, 6, 10], [1, 2, 5, 9], [0, 4, 5, 6]], 
+            [[1, 5, 9, 10], [4, 5, 6, 2], [0, 1, 5, 9], [8, 4, 5, 6]]  
+        ];
+
+        const GRAVITY_DIRECTIONS = [
+            { dir: [0, 1],  name: "DOWN (↓)" },
+            { dir: [1, 0],  name: "RIGHT (→)" },
+            { dir: [0, -1], name: "UP (↑)" },
+            { dir: [-1, 0], name: "LEFT (←)" }
+        ];
+
+        // ==========================================
+        // 2. Web Audio BGM 클래스
+        // ==========================================
+        class SoundManager {
+            constructor() {
+                this.ctx = null;
+                this.isPlaying = false;
+                this.muted = false;
+                this.timer = null;
+                this.noteIndex = 0;
+                
+                this.melody = [
+                    {n: 'E5', d: 4}, {n: 'B4', d: 8}, {n: 'C5', d: 8}, {n: 'D5', d: 4}, {n: 'C5', d: 8}, {n: 'B4', d: 8},
+                    {n: 'A4', d: 4}, {n: 'A4', d: 8}, {n: 'C5', d: 8}, {n: 'E5', d: 4}, {n: 'D5', d: 8}, {n: 'C5', d: 8},
+                    {n: 'B4', d: 4}, {n: 'B4', d: 8}, {n: 'C5', d: 8}, {n: 'D5', d: 4}, {n: 'E5', d: 4},
+                    {n: 'C5', d: 4}, {n: 'A4', d: 4}, {n: 'A4', d: 4}
+                ];
+                
+                this.freqs = {
+                    'A4': 440.00, 'B4': 493.88, 'C5': 523.25, 'D5': 587.33,
+                    'E5': 659.25, 'F5': 698.46, 'G5': 783.99
+                };
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playBGM() {
+                this.init();
+                if (this.muted || this.isPlaying) return;
+                this.isPlaying = true;
+                this.noteIndex = 0;
+                this.playNextNote();
+            }
+
+            stopBGM() {
+                this.isPlaying = false;
+                if (this.timer) clearTimeout(this.timer);
+            }
+
+            playNextNote() {
+                if (!this.isPlaying || this.muted) return;
+                const note = this.melody[this.noteIndex];
+                const freq = this.freqs[note.n];
+                const duration = (60000 / 140 / 4) * (16 / note.d);
+
+                if (freq && this.ctx) {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(0.02, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + (duration / 1000) * 0.9);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + (duration / 1000));
+                }
+
+                this.noteIndex = (this.noteIndex + 1) % this.melody.length;
+                this.timer = setTimeout(() => this.playNextNote(), duration);
+            }
+
+            toggle() {
+                this.muted = !this.muted;
+                if (this.muted) this.stopBGM();
+                return !this.muted;
+            }
+        }
+
+        const soundManager = new SoundManager();
+
+        // ==========================================
+        // 3. 테트로미노 클래스
+        // ==========================================
+        class Tetromino {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.type = Math.floor(Math.random() * TETROMINO_SHAPES.length);
+                this.color = TETROMINO_COLORS[this.type];
+                this.rotation = 0;
+            }
+
+            image() {
+                return TETROMINO_SHAPES[this.type][this.rotation];
+            }
+
+            rotate() {
+                this.rotation = (this.rotation + 1) % TETROMINO_SHAPES[this.type].length;
+            }
+        }
+
+        // ==========================================
+        // 4. 중력 변형 테트리스 게임 메인 클래스
+        // ==========================================
+        class GravityTetrisGame {
+            constructor() {
+                this.canvas = document.getElementById('tetrisCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.nextCanvas = document.getElementById('nextPieceCanvas');
+                this.nextCtx = this.nextCanvas.getContext('2d');
+
+                this.score = 0;
+                this.playerName = '';
+                this.isNameEntered = false;
+                this.state = 'start'; 
+                this.board = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(null));
+
+                this.gravityIndex = 0; // 0: DOWN, 1: RIGHT, 2: UP, 3: LEFT
+                this.lastGravityChange = Date.now();
+                this.gravityInterval = 45000; // 45초
+
+                this.currentPiece = null;
+                this.nextPiece = null;
+
+                this.newPiece();
+            }
+
+            getSpawnPos() {
+                if (this.gravityIndex === 0)      return { x: 8, y: 0 };  // DOWN: 맨 위
+                else if (this.gravityIndex === 1) return { x: 0, y: 8 };  // RIGHT: 맨 왼쪽
+                else if (this.gravityIndex === 2) return { x: 8, y: 16 }; // UP: 맨 아래
+                else                              return { x: 16, y: 8 }; // LEFT: 맨 오른쪽
+            }
+
+            newPiece() {
+                const spawn = this.getSpawnPos();
+                if (!this.nextPiece) {
+                    this.nextPiece = new Tetromino(spawn.x, spawn.y);
+                }
+                this.currentPiece = this.nextPiece;
+                this.currentPiece.x = spawn.x;
+                this.currentPiece.y = spawn.y;
+
+                this.nextPiece = new Tetromino(spawn.x, spawn.y);
+                this.drawNextPiece();
+            }
+
+            intersects(offsetX = 0, offsetY = 0, ignoreBoard = false) {
+                const shape = this.currentPiece.image();
+                for (let i = 0; i < 4; i++) {
+                    for (let j = 0; j < 4; j++) {
+                        if (shape.includes(i * 4 + j)) {
+                            const targetX = j + this.currentPiece.x + offsetX;
+                            const targetY = i + this.currentPiece.y + offsetY;
+
+                            if (targetX < 0 || targetX >= GRID_SIZE || targetY < 0 || targetY >= GRID_SIZE) {
+                                return true;
+                            }
+                            if (!ignoreBoard && this.board[targetY][targetX] !== null) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            }
+
+            rotateGravity() {
+                this.gravityIndex = (this.gravityIndex + 1) % 4;
+                this.lastGravityChange = Date.now();
+                updateUI();
+            }
+
+            stepGravity() {
+                const [dx, dy] = GRAVITY_DIRECTIONS[this.gravityIndex].dir;
+                if (!this.intersects(dx, dy)) {
+                    this.currentPiece.x += dx;
+                    this.currentPiece.y += dy;
+                } else {
+                    this.freeze();
+                }
+            }
+
+            movePerpendicular(step) {
+                let dx = 0, dy = 0;
+                if ([0, 2].includes(this.gravityIndex)) { // DOWN or UP
+                    dx = step;
+                } else { // RIGHT or LEFT
+                    dy = step;
+                }
+
+                if (!this.intersects(dx, dy, true)) {
+                    this.currentPiece.x += dx;
+                    this.currentPiece.y += dy;
+                }
+            }
+
+            rotatePiece() {
+                const oldRotation = this.currentPiece.rotation;
+                this.currentPiece.rotate();
+                if (this.intersects(0, 0, true)) {
+                    this.currentPiece.rotation = oldRotation;
+                }
+            }
+
+            getGhostPos() {
+                const [dx, dy] = GRAVITY_DIRECTIONS[this.gravityIndex].dir;
+                let stepCount = 0;
+                while (!this.intersects(dx * (stepCount + 1), dy * (stepCount + 1))) {
+                    stepCount++;
+                }
+                return {
+                    x: this.currentPiece.x + dx * stepCount,
+                    y: this.currentPiece.y + dy * stepCount
+                };
+            }
+
+            hardDrop() {
+                const [dx, dy] = GRAVITY_DIRECTIONS[this.gravityIndex].dir;
+                while (!this.intersects(dx, dy)) {
+                    this.currentPiece.x += dx;
+                    this.currentPiece.y += dy;
+                }
+                this.freeze();
+            }
+
+            freeze() {
+                const shape = this.currentPiece.image();
+                for (let i = 0; i < 4; i++) {
+                    for (let j = 0; j < 4; j++) {
+                        if (shape.includes(i * 4 + j)) {
+                            const boardY = i + this.currentPiece.y;
+                            const boardX = j + this.currentPiece.x;
+                            if (boardY >= 0 && boardY < GRID_SIZE && boardX >= 0 && boardX < GRID_SIZE) {
+                                this.board[boardY][boardX] = this.currentPiece.color;
+                            }
+                        }
+                    }
+                }
+
+                this.clearLines();
+                this.newPiece();
+            }
+
+            clearLines() {
+                let linesCleared = 0;
+
+                if ([0, 2].includes(this.gravityIndex)) {
+                    // 가로줄 삭제
+                    for (let y = 0; y < GRID_SIZE; y++) {
+                        if (this.board[y].every(cell => cell !== null)) {
+                            linesCleared++;
+                            this.board.splice(y, 1);
+                            if (this.gravityIndex === 0) {
+                                this.board.unshift(Array(GRID_SIZE).fill(null));
+                            } else {
+                                this.board.push(Array(GRID_SIZE).fill(null));
+                            }
+                        }
+                    }
+                } else {
+                    // 세로줄 삭제
+                    for (let x = GRID_SIZE - 1; x >= 0; x--) {
+                        let isFull = true;
+                        for (let y = 0; y < GRID_SIZE; y++) {
+                            if (this.board[y][x] === null) {
+                                isFull = false;
+                                break;
+                            }
+                        }
+                        if (isFull) {
+                            linesCleared++;
+                            for (let y = 0; y < GRID_SIZE; y++) {
+                                this.board[y].splice(x, 1);
+                                if (this.gravityIndex === 1) {
+                                    this.board[y].unshift(null);
+                                } else {
+                                    this.board[y].push(null);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (linesCleared === 1) this.score += 10;
+                else if (linesCleared === 2) this.score += 30;
+                else if (linesCleared === 3) this.score += 50;
+                else if (linesCleared >= 4) this.score += 70;
+
+                document.getElementById('uiScore').textContent = this.score;
+            }
+
+            saveScore() {
+                const nameToSave = this.playerName.trim() || '익명';
+                let scores = JSON.parse(localStorage.getItem('gravityTetrisScores') || '[]');
+                scores.push({ name: nameToSave, score: this.score });
+                scores.sort((a, b) => b.score - a.score);
+                scores = scores.slice(0, 5);
+                localStorage.setItem('gravityTetrisScores', JSON.stringify(scores));
+            }
+
+            getHighScores() {
+                return JSON.parse(localStorage.getItem('gravityTetrisScores') || '[]');
+            }
+
+            draw() {
+                this.ctx.fillStyle = '#181818';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // 그리드 보드 그리기
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    for (let x = 0; x < GRID_SIZE; x++) {
+                        const px = x * BLOCK_SIZE;
+                        const py = y * BLOCK_SIZE;
+
+                        if (this.board[y][x]) {
+                            this.ctx.fillStyle = this.board[y][x];
+                            this.ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
+                        } else {
+                            this.ctx.fillStyle = COLOR_GRID_INSIDE;
+                            this.ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
+                        }
+
+                        this.ctx.strokeStyle = COLOR_GRID_LINE;
+                        this.ctx.lineWidth = 1;
+                        this.ctx.strokeRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
+                    }
+                }
+
+                // 그림자 및 블록 그리기
+                if (this.currentPiece && ['playing', 'paused', 'restart'].includes(this.state)) {
+                    const shape = this.currentPiece.image();
+                    const ghost = this.getGhostPos();
+
+                    // 그림자 (Ghost)
+                    for (let i = 0; i < 4; i++) {
+                        for (let j = 0; j < 4; j++) {
+                            if (shape.includes(i * 4 + j)) {
+                                const gx = (j + ghost.x) * BLOCK_SIZE;
+                                const gy = (i + ghost.y) * BLOCK_SIZE;
+                                this.ctx.strokeStyle = COLOR_GHOST;
+                                this.ctx.lineWidth = 2;
+                                this.ctx.strokeRect(gx + 1, gy + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
+                            }
+                        }
+                    }
+
+                    // 현재 블록
+                    for (let i = 0; i < 4; i++) {
+                        for (let j = 0; j < 4; j++) {
+                            if (shape.includes(i * 4 + j)) {
+                                const px = (j + this.currentPiece.x) * BLOCK_SIZE;
+                                const py = (i + this.currentPiece.y) * BLOCK_SIZE;
+                                this.ctx.fillStyle = this.currentPiece.color;
+                                this.ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
+                                this.ctx.strokeStyle = COLOR_GRID_LINE;
+                                this.ctx.lineWidth = 1;
+                                this.ctx.strokeRect(px, py, BLOCK_SIZE, BLOCK_SIZE);
+                            }
+                        }
+                    }
+                }
+            }
+
+            drawNextPiece() {
+                this.nextCtx.clearRect(0, 0, this.nextCanvas.width, this.nextCanvas.height);
+                if (!this.nextPiece) return;
+
+                const shape = this.nextPiece.image();
+                const miniSize = 16;
+                const offsetX = (80 - 4 * miniSize) / 2;
+                const offsetY = (80 - 4 * miniSize) / 2;
+
+                for (let i = 0; i < 4; i++) {
+                    for (let j = 0; j < 4; j++) {
+                        if (shape.includes(i * 4 + j)) {
+                            const px = offsetX + j * miniSize;
+                            const py = offsetY + i * miniSize;
+                            this.nextCtx.fillStyle = this.nextPiece.color;
+                            this.nextCtx.fillRect(px, py, miniSize, miniSize);
+                            this.nextCtx.strokeStyle = COLOR_GRID_LINE;
+                            this.nextCtx.strokeRect(px, py, miniSize, miniSize);
+                        }
+                    }
+                }
+            }
+        }
+
+        // ==========================================
+        // 5. 게임 인스턴스 및 UI 동기화
+        // ==========================================
+        const game = new GravityTetrisGame();
+
+        const overlay = document.getElementById('overlay');
+        const screenNameInput = document.getElementById('screenNameInput');
+        const screenStart = document.getElementById('screenStart');
+        const screenPause = document.getElementById('screenPause');
+        const screenRestart = document.getElementById('screenRestart');
+        const screenGameOver = document.getElementById('screenGameOver');
+
+        const playerNameInput = document.getElementById('playerNameInput');
+        const btnSubmitName = document.getElementById('btnSubmitName');
+        const btnStartGame = document.getElementById('btnStartGame');
+        const btnRestartGame = document.getElementById('btnRestartGame');
+        const welcomeMsg = document.getElementById('welcomeMsg');
+        const rankingList = document.getElementById('rankingList');
+        const uiPlayerName = document.getElementById('uiPlayerName');
+        const uiGravityDir = document.getElementById('uiGravityDir');
+        const uiGravityTimer = document.getElementById('uiGravityTimer');
+
+        function updateUI() {
+            screenNameInput.classList.add('hidden');
+            screenStart.classList.add('hidden');
+            screenPause.classList.add('hidden');
+            screenRestart.classList.add('hidden');
+            screenGameOver.classList.add('hidden');
+            overlay.classList.remove('hidden');
+
+            if (game.state === 'start') {
+                if (!game.isNameEntered) {
+                    screenNameInput.classList.remove('hidden');
+                } else {
+                    screenStart.classList.remove('hidden');
+                    welcomeMsg.textContent = `환영합니다, ${game.playerName}님!`;
+                }
+            } else if (game.state === 'playing') {
+                overlay.classList.add('hidden');
+            } else if (game.state === 'paused') {
+                screenPause.classList.remove('hidden');
+            } else if (game.state === 'restart') {
+                screenRestart.classList.remove('hidden');
+            } else if (game.state === 'gameover') {
+                screenGameOver.classList.remove('hidden');
+                const highScores = game.getHighScores();
+                rankingList.innerHTML = highScores.map((s, idx) => {
+                    const isCurrent = (s.name === game.playerName && s.score === game.score);
+                    const colorClass = isCurrent ? 'text-emerald-400 font-bold' : 'text-slate-300';
+                    return `<li class="${colorClass}">${idx + 1}위: ${s.name} - ${s.score}점</li>`;
+                }).join('');
+            }
+
+            uiPlayerName.textContent = game.playerName || '-';
+            uiGravityDir.textContent = GRAVITY_DIRECTIONS[game.gravityIndex].name;
+        }
+
+        function submitName() {
+            const name = playerNameInput.value.trim();
+            if (name.length > 0) {
+                game.playerName = name;
+                game.isNameEntered = true;
+                updateUI();
+            }
+        }
+
+        function startGame() {
+            if (game.isNameEntered) {
+                game.state = 'playing';
+                game.lastGravityChange = Date.now();
+                soundManager.playBGM();
+                updateUI();
+            }
+        }
+
+        function restartGame() {
+            const savedName = game.playerName;
+            Object.assign(game, new GravityTetrisGame());
+            game.playerName = savedName;
+            game.isNameEntered = true;
+            game.state = 'playing';
+            game.lastGravityChange = Date.now();
+            soundManager.playBGM();
+            updateUI();
+        }
+
+        btnSubmitName.addEventListener('click', submitName);
+        btnStartGame.addEventListener('click', startGame);
+        btnRestartGame.addEventListener('click', restartGame);
+
+        document.getElementById('btnToggleSound').addEventListener('click', (e) => {
+            const active = soundManager.toggle();
+            e.target.textContent = active ? 'ON' : 'OFF';
+        });
+
+        // ==========================================
+        // 6. 키보드 컨트롤 핸들러
+        // ==========================================
+        window.addEventListener('keydown', (e) => {
+            if (game.state === 'start' && !game.isNameEntered) {
+                if (e.key === 'Enter') submitName();
+                return;
+            }
+
+            if (game.state === 'start' && game.isNameEntered) {
+                if (e.key === 'Enter') startGame();
+                return;
+            }
+
+            if (game.state === 'playing') {
+                switch (e.key) {
+                    case 'ArrowLeft':
+                        game.movePerpendicular(-1);
+                        break;
+                    case 'ArrowRight':
+                        game.movePerpendicular(1);
+                        break;
+                    case 'ArrowUp':
+                        game.rotatePiece();
+                        break;
+                    case 'ArrowDown':
+                        game.stepGravity();
+                        break;
+                    case ' ':
+                        e.preventDefault();
+                        game.hardDrop();
+                        break;
+                    case 'g':
+                    case 'G':
+                        game.rotateGravity();
+                        break;
+                    case 'p':
+                    case 'P':
+                        game.state = 'paused';
+                        soundManager.stopBGM();
+                        updateUI();
+                        break;
+                    case 'r':
+                    case 'R':
+                        game.state = 'restart';
+                        updateUI();
+                        break;
+                }
+            } else if (game.state === 'paused') {
+                if (e.key === 'p' || e.key === 'P') {
+                    game.state = 'playing';
+                    soundManager.playBGM();
+                    updateUI();
+                }
+            } else if (game.state === 'restart' || game.state === 'gameover') {
+                if (e.key === 'r' || e.key === 'R') {
+                    restartGame();
+                }
+            }
+        });
+
+        // ==========================================
+        // 7. 루프 및 실시간 중력 전환
+        // ==========================================
+        let lastTime = 0;
+        let dropTimer = 0;
+
+        function update(time = 0) {
+            const deltaTime = time - lastTime;
+            lastTime = time;
+
+            if (game.state === 'playing') {
+                // 실시간 자동 중력 하강
+                dropTimer += deltaTime;
+                if (dropTimer > 500) {
+                    game.stepGravity();
+                    dropTimer = 0;
+                }
+
+                // 45초 주기 중력 방향 전환
+                const now = Date.now();
+                const elapsed = now - game.lastGravityChange;
+                const remainSec = Math.max(0, Math.ceil((game.gravityInterval - elapsed) / 1000));
+                uiGravityTimer.textContent = `다음 전환: ${remainSec}초`;
+
+                if (elapsed > game.gravityInterval) {
+                    game.rotateGravity();
+                }
+            }
+
+            game.draw();
+            requestAnimationFrame(update);
+        }
+
+        updateUI();
+        update();
+    </script>
+</body>
+</html>
